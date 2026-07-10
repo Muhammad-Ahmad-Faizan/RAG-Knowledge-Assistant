@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG Knowledge Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8f4ea;
+      --paper: #fffdf7;
+      --ink: #1f2f3d;
+      --muted: #5a6874;
+      --accent: #f26d3d;
+      --accent-2: #0ea5a1;
+      --line: #d7d7cf;
+      --good: #0f766e;
+      --warn: #b45309;
+      --bad: #be123c;
+      --shadow: 0 22px 48px rgba(31, 47, 61, 0.14);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(14, 165, 161, 0.22), transparent 30%),
+        radial-gradient(circle at 88% 13%, rgba(242, 109, 61, 0.24), transparent 34%),
+        linear-gradient(150deg, #f8f4ea 0%, #f1f7f6 52%, #fffaf2 100%);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .shell {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      border-radius: calc(var(--radius) + 6px);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 420ms ease-out;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -60px -80px auto;
+      width: 190px;
+      height: 190px;
+      border-radius: 999px;
+      background: conic-gradient(from 30deg, rgba(242, 109, 61, 0.25), rgba(14, 165, 161, 0.28));
+      filter: blur(1px);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "DM Serif Display", serif;
+      font-size: clamp(1.9rem, 3vw, 2.7rem);
+      letter-spacing: 0.3px;
+      max-width: 18ch;
+      line-height: 1.06;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 65ch;
+      line-height: 1.55;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 960px) {
+      .grid {
+        grid-template-columns: 1.05fr 1fr;
+      }
+    }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      animation: fadeUp 420ms ease-out;
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 1.06rem;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .input, textarea, select {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #c8d2d2;
+      padding: 10px 12px;
+      font: inherit;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .input:focus, textarea:focus, select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 3px rgba(14, 165, 161, 0.17);
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(92deg, #ef6a3b, #de4b19);
+      transition: transform 130ms ease, filter 130ms ease;
+    }
+
+    .btn:hover { filter: brightness(1.05); }
+    .btn:active { transform: translateY(1px); }
+
+    .btn.alt {
+      background: linear-gradient(92deg, #0ea5a1, #0b7e7b);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #bfd2d1;
+      color: #18454a;
+      background: #ecf9f8;
+      font-size: 0.85rem;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--muted);
+      min-height: 22px;
+    }
+
+    .status.ok { color: var(--good); }
+    .status.warn { color: var(--warn); }
+    .status.bad { color: var(--bad); }
+
+    .results {
+      margin-top: 12px;
+      border-top: 1px dashed #d3dddb;
+      padding-top: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .panel {
+      background: #fcfffe;
+      border: 1px solid #d8e6e2;
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 0.98rem;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f6faf9;
+      border: 1px solid #d3e4df;
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 0.84rem;
+    }
+
+    .answer-text {
+      white-space: pre-wrap;
+      line-height: 1.65;
+      font-size: 0.98rem;
+      color: #1f2f3d;
+      background: #f9fcfb;
+      border: 1px solid #d8e6e2;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .result-card {
+      border: 1px solid #d7e3df;
+      border-radius: 12px;
+      background: #fbfffd;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .result-title {
+      font-size: 0.86rem;
+      color: #226364;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .result-snippet {
+      white-space: pre-wrap;
+      line-height: 1.5;
+      color: #2f3b47;
+      font-size: 0.9rem;
+    }
+
+    .doc-list {
+      display: grid;
+      gap: 8px;
+      max-height: 180px;
+      overflow: auto;
+      padding-right: 6px;
+    }
+
+    .doc-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid #d9dfd8;
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px 10px;
+      gap: 10px;
+    }
+
+    .doc-name {
+      font-size: 0.9rem;
+      color: #30424c;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>RAG Knowledge Assistant Playground</h1>
+      <p class="subtitle">Upload PDFs, inspect indexed documents, and run citation-aware questions in one place. Use this page instead of manual API calls while iterating quickly.</p>
+      <div class="row" id="healthBadges"></div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>1) Upload PDF</h2>
+        <input id="fileInput" class="input" type="file" accept="application/pdf" />
+        <div class="row">
+          <button id="uploadBtn" class="btn">Upload & Index</button>
+          <button id="refreshDocsBtn" class="btn alt" type="button">Refresh Documents</button>
+        </div>
+        <div id="uploadStatus" class="status"></div>
+      </article>
+
+      <article class="card">
+        <h2>2) Indexed Documents</h2>
+        <div id="documentsList" class="doc-list"></div>
+        <div id="docsStatus" class="status"></div>
+      </article>
+
+      <article class="card" style="grid-column: 1 / -1;">
+        <h2>3) Ask Question</h2>
+        <textarea id="questionInput" placeholder="Ask about your uploaded document(s)"></textarea>
+        <div class="row">
+          <input id="conversationInput" class="input" placeholder="conversation id (optional, e.g. demo-1)" />
+        </div>
+        <div class="row">
+          <button id="queryBtn" class="btn">Run Query</button>
+        </div>
+        <div id="queryStatus" class="status"></div>
+
+        <section id="queryResults" class="results" hidden>
+          <div class="panel">
+            <h3>Answer</h3>
+            <div id="answerBox"></div>
+          </div>
+          <div class="panel">
+            <h3>Sources</h3>
+            <div id="sourcesBox"></div>
+          </div>
+          <div class="panel">
+            <h3>Retrieved Chunks</h3>
+            <div id="chunksBox"></div>
+          </div>
+        </section>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const state = { docs: [], selected: new Set() };
+
+    const healthBadges = document.getElementById("healthBadges");
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const refreshDocsBtn = document.getElementById("refreshDocsBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const docsStatus = document.getElementById("docsStatus");
+    const documentsList = document.getElementById("documentsList");
+    const questionInput = document.getElementById("questionInput");
+    const conversationInput = document.getElementById("conversationInput");
+    const queryBtn = document.getElementById("queryBtn");
+    const queryStatus = document.getElementById("queryStatus");
+    const queryResults = document.getElementById("queryResults");
+    const answerBox = document.getElementById("answerBox");
+    const sourcesBox = document.getElementById("sourcesBox");
+    const chunksBox = document.getElementById("chunksBox");
+
+    function setStatus(el, text, tone = "") {
+      el.textContent = text;
+      el.className = `status ${tone}`.trim();
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        healthBadges.innerHTML = `<span class="pill">API ${data.status === "ok" ? "healthy" : "unknown"}</span>`;
+      } catch {
+        healthBadges.innerHTML = `<span class="pill" style="border-color:#f5c3c3;background:#fff1f1;color:#8a2222;">API unreachable</span>`;
+      }
+    }
+
+    function renderDocuments() {
+      if (!state.docs.length) {
+        documentsList.innerHTML = '<div class="panel">No indexed documents yet.</div>';
+        return;
+      }
+
+      documentsList.innerHTML = state.docs.map((doc) => {
+        const checked = state.selected.has(doc.source_file) ? "checked" : "";
+        return `
+          <label class="doc-item">
+            <input type="checkbox" data-file="${escapeHtml(doc.source_file)}" ${checked} />
+            <span class="doc-name" title="${escapeHtml(doc.source_file)}">${escapeHtml(doc.source_file)}</span>
+            <span class="pill">${doc.chunks} chunks</span>
+          </label>
+        `;
+      }).join("");
+
+      documentsList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+        checkbox.addEventListener("change", (event) => {
+          const fileName = event.target.dataset.file;
+          if (event.target.checked) {
+            state.selected.add(fileName);
+          } else {
+            state.selected.delete(fileName);
+          }
+        });
+      });
+    }
+
+    async function fetchDocuments() {
+      setStatus(docsStatus, "Loading documents...");
+      try {
+        const res = await fetch("/documents");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        state.docs = await res.json();
+        for (const doc of state.docs) {
+          if (!state.selected.has(doc.source_file)) {
+            state.selected.add(doc.source_file);
+          }
+        }
+        renderDocuments();
+        setStatus(docsStatus, `Loaded ${state.docs.length} document(s).`, "ok");
+      } catch (error) {
+        setStatus(docsStatus, `Failed to load documents: ${error.message}`, "bad");
+      }
+    }
+
+    async function uploadDocument() {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        setStatus(uploadStatus, "Choose a PDF before upload.", "warn");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setStatus(uploadStatus, "Uploading and indexing...");
+      uploadBtn.disabled = true;
+      try {
+        const res = await fetch("/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+        setStatus(
+          uploadStatus,
+          `Indexed ${data.chunks_indexed} chunks from ${data.pages_extracted} pages in ${data.source_file}.`,
+          "ok"
+        );
+        await fetchDocuments();
+      } catch (error) {
+        setStatus(uploadStatus, `Upload failed: ${error.message}`, "bad");
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    }
+
+    function renderQueryResult(result) {
+      queryResults.hidden = false;
+      answerBox.innerHTML = `<div class="answer-text">${escapeHtml(result.answer)}</div>`;
+
+      if (!result.sources?.length) {
+        sourcesBox.innerHTML = '<div class="result-card"><div class="result-snippet">No citations returned.</div></div>';
+      } else {
+        sourcesBox.innerHTML = result.sources.map((source) => (
+          `<div class="result-card">` +
+          `<div class="result-title">${escapeHtml(source.file)} | page ${source.page}</div>` +
+          `<div class="result-snippet">${escapeHtml(source.snippet || "")}</div>` +
+          `</div>`
+        )).join("");
+      }
+
+      if (!result.retrieved_chunks?.length) {
+        chunksBox.innerHTML = '<div class="result-card"><div class="result-snippet">No chunks retrieved. Check source file filter or upload state.</div></div>';
+      } else {
+        chunksBox.innerHTML = result.retrieved_chunks.map((chunk, index) => (
+          `<div class="result-card">` +
+          `<div class="result-title">#${index + 1} ${escapeHtml(chunk.source_file)} p.${chunk.page_number}</div>` +
+          `<div class="result-snippet">${escapeHtml((chunk.text || "").slice(0, 380))}${chunk.text && chunk.text.length > 380 ? "..." : ""}</div>` +
+          `</div>`
+        )).join("");
+      }
+    }
+
+    async function runQuery() {
+      const question = questionInput.value.trim();
+      if (!question) {
+        setStatus(queryStatus, "Please enter a question.", "warn");
+        return;
+      }
+
+      const payload = { question };
+      const selectedFiles = [...state.selected];
+      if (selectedFiles.length) payload.source_files = selectedFiles;
+
+      const convoId = conversationInput.value.trim();
+      if (convoId) payload.conversation_id = convoId;
+
+      setStatus(queryStatus, "Running retrieval and generation...");
+      queryBtn.disabled = true;
+      try {
+        const res = await fetch("/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+        renderQueryResult(data);
+        setStatus(queryStatus, data.rewritten_question ? `Query completed. Rewritten as: ${data.rewritten_question}` : "Query completed.", "ok");
+      } catch (error) {
+        queryResults.hidden = true;
+        setStatus(queryStatus, `Query failed: ${error.message}`, "bad");
+      } finally {
+        queryBtn.disabled = false;
+      }
+    }
+
+    uploadBtn.addEventListener("click", uploadDocument);
+    refreshDocsBtn.addEventListener("click", fetchDocuments);
+    queryBtn.addEventListener("click", runQuery);
+
+    checkHealth();
+    fetchDocuments();
+  </script>
+</body>
+</html>
