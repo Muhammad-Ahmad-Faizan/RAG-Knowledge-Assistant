@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    groq_chat_model: str = "llama-3.3-70b-versatile"
+    groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
     chunk_size: int = 700
     chunk_overlap: int = 100
     retrieval_k: int = 5

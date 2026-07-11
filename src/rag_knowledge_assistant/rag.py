@@ -27,13 +27,18 @@ class RewrittenQuestion(BaseModel):
 @lru_cache(maxsize=1)
 def get_chat_model():
     settings = get_settings()
-    if not settings.openai_api_key:
-        return None
 
-    from langchain_openai import ChatOpenAI
+    if settings.groq_api_key:
+        from langchain_groq import ChatGroq
 
-    return ChatOpenAI(model=settings.openai_chat_model, api_key=settings.openai_api_key, temperature=0)
+        return ChatGroq(model=settings.groq_chat_model, api_key=settings.groq_api_key, temperature=0)
 
+    if settings.openai_api_key:
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(model=settings.openai_chat_model, api_key=settings.openai_api_key, temperature=0)
+
+    return None
 
 def build_context_snippets(chunks: Iterable[RetrievedChunk]) -> str:
     parts: list[str] = []
@@ -79,7 +84,7 @@ def parse_citations(answer: str, chunks: list[RetrievedChunk]) -> list[CitationR
         seen.add(key)
         snippet = next(
             (
-                chunk.text[:240].strip()
+                clean_text(chunk.text[:240]).strip()
                 for chunk in chunks
                 if chunk.source_file == file_name and chunk.page_number == page
             ),
@@ -87,6 +92,36 @@ def parse_citations(answer: str, chunks: list[RetrievedChunk]) -> list[CitationR
         )
         citations.append(CitationRecord(file=file_name, page=page, snippet=snippet))
     return citations
+
+
+def clean_text(text: str) -> str:
+    """Attempt to normalize common mojibake/encoding artifacts and whitespace."""
+    if not text:
+        return text
+    # Try to fix common mis-decodings (latin1 -> utf-8 mojibake)
+    try:
+        fixed = text.encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
+        # If the fix yields more ASCII/letters than the original, prefer it
+        if sum(c.isalpha() for c in fixed) >= sum(c.isalpha() for c in text):
+            text = fixed
+    except Exception:
+        pass
+
+    # Basic replacements for typical artifacts
+    replacements = {
+        "â€”": "—",
+        "â€“": "–",
+        "â€™": "'",
+        "â€˜": "'",
+        "â€œ": '"',
+        "â€�": '"',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+
+    # Normalize whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def rewrite_followup_question(question: str, history: list[tuple[str, str]]) -> str:
@@ -140,21 +175,23 @@ def generate_answer(question: str, chunks: list[RetrievedChunk]) -> GeneratedAns
     settings = get_settings()
     context_chunks = chunks[: settings.max_context_chunks]
     chat_model = get_chat_model()
+    print("DEBUG chat_model is:", chat_model)   # <-- add this line temporarily
+
     prompt = build_rag_prompt(question, context_chunks)
 
     if chat_model is not None:
-        try:
-            structured_model = chat_model.with_structured_output(GeneratedAnswer)
-            result = structured_model.invoke(prompt)
-            if result.answer.strip():
-                return result
-        except Exception:
-            pass
+            try:
+                structured_model = chat_model.with_structured_output(GeneratedAnswer)
+                result = structured_model.invoke(prompt)
+                if result.answer.strip():
+                    return result
+            except Exception as e:
+                print("DEBUG LLM call failed:", repr(e))   # <-- add this line
 
     cited_parts = []
     citations: list[StructuredCitation] = []
     for chunk in context_chunks[:3]:
-        snippet = re.sub(r"\s+", " ", chunk.text).strip()
+        snippet = clean_text(chunk.text)
         snippet = snippet[:180].rstrip()
         cited_parts.append(f"- {snippet} ({chunk.source_file}, p. {chunk.page_number})")
         citations.append(StructuredCitation(file=chunk.source_file, page=chunk.page_number))
@@ -167,10 +204,15 @@ def build_sources(answer: GeneratedAnswer, chunks: list[RetrievedChunk]) -> list
     context_chunks = chunks[: get_settings().max_context_chunks]
     if answer.citations:
         records: list[CitationRecord] = []
+        seen: set[tuple[str, int]] = set()
         for citation in answer.citations:
+            key = (citation.file, citation.page)
+            if key in seen:
+                continue
+            seen.add(key)
             snippet = next(
                 (
-                    chunk.text[:240].strip()
+                    clean_text(chunk.text[:240]).strip()
                     for chunk in context_chunks
                     if chunk.source_file == citation.file and chunk.page_number == citation.page
                 ),
